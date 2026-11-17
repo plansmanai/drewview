@@ -45,6 +45,18 @@ body { border-top: 3px solid var(--accent); font-family: 'Lato', "Helvetica Neue
 #splitter::after { content: ""; position: absolute; top: 0; bottom: 0; left: 4px; width: 2px; background: var(--line); border-radius: 2px; }
 #splitter.drag::after { background: var(--accent); }
 body.dragging { cursor: col-resize; user-select: none; }
+body.dragging-v { cursor: row-resize; user-select: none; }
+/* the conversation slid all the way off: the picture gets the whole window; the line stays at the edge to pull it back */
+#main.nochat { grid-template-columns: minmax(0, 1fr) 10px 0; }
+#main.nochat #chat-pane { display: none; }
+#main.nochat #splitter::after, #hsplit.shut::after { background: var(--accent); }
+/* the line under the picture: slide it down to shrink or hide the earlier pictures + what he is doing */
+#hsplit { flex: 0 0 11px; cursor: row-resize; position: relative; touch-action: none; border-top: 1px solid var(--line); background: #fff; }
+#hsplit::after { content: ""; position: absolute; left: 50%; top: 3px; width: 46px; height: 3px; margin-left: -23px; background: #cfd5db; border-radius: 2px; }
+#hsplit.drag::after { background: var(--accent); }
+#tray { flex: 0 0 auto; display: flex; flex-direction: column; min-height: 0; }
+#tray.sized #doing { flex: 1 1 auto; max-height: none; min-height: 0; }
+#tray.shut { display: none; }
 
 /* Left: Drew's work */
 #now { flex: 1 1 auto; min-height: 0; display: flex; align-items: center; justify-content: center; background: #fafbfc;
@@ -62,7 +74,7 @@ body.dragging { cursor: col-resize; user-select: none; }
 .th img { width: 100%; height: 100%; object-fit: cover; }
 .th.sel { border-color: var(--accent); }
 .th.mine { border-color: var(--red); }
-#doing { flex: 0 0 auto; max-height: 22%; overflow-y: auto; border-top: 1px solid var(--line); padding: 6px 10px; font-size: 12px; }
+#doing { flex: 0 0 auto; max-height: 22vh; overflow-y: auto; border-top: 1px solid var(--line); padding: 6px 10px; font-size: 12px; }
 #doing:empty { display: none; }
 .act { display: grid; grid-template-columns: 50px minmax(0, 1fr); gap: 8px; padding: 2px 0; color: #444; }
 .act .t { color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
@@ -132,7 +144,10 @@ body.dragging { cursor: col-resize; user-select: none; }
 /* a phone held upright: the picture on top, the conversation under it (side by side is too narrow to read a plan) */
 @media (max-width: 620px) and (orientation: portrait) {
   #main { grid-template-columns: 1fr; grid-template-rows: minmax(0, var(--splitv, 46%)) 10px minmax(0, 1fr); }
+  #main.nochat { grid-template-columns: 1fr; grid-template-rows: minmax(0, 1fr) 10px 0; }
   #splitter { cursor: row-resize; }
+  #hsplit { display: none; }
+  #tray, #tray.shut { display: flex; height: auto !important; }
   #splitter::after { top: 4px; bottom: auto; left: 0; right: 0; width: auto; height: 2px; }
   #doing { display: none; }
 }
@@ -155,8 +170,11 @@ body.dragging { cursor: col-resize; user-select: none; }
     <div class="pane-hdr"><span class="brand">DREW<span>·</span>VIEW</span><span class="grow" id="st-now">—</span></div>
     <div id="now"><div id="now-empty">Nothing to view yet.<br>When Drew draws or shows you something, it lands here. Tap it to mark it up.</div></div>
     <div id="now-cap" style="display:none"></div>
-    <div id="strip"></div>
-    <div id="doing"></div>
+    <div id="hsplit"></div>
+    <div id="tray">
+      <div id="strip"></div>
+      <div id="doing"></div>
+    </div>
   </section>
 
   <div id="splitter"></div>
@@ -505,23 +523,46 @@ body.dragging { cursor: col-resize; user-select: none; }
     document.title = (online && live.busy ? "● " : "") + "DrewView — Plansman";
   }
 
-  // ── Draggable split (side by side, or stacked on an upright phone) ──
+  // ── Sliding lines. Between the panes: slide to resize, all the way to the edge to put the conversation away
+  //    (double-click the line = away / back). Under the picture: slide down to shrink or hide the tray. ──
   (function () {
     var main = $("main"), sp = $("splitter"), dragging = false;
+    function put(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
+    function get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
     function stacked() { return getComputedStyle(main).gridTemplateColumns.split(" ").length === 1; }
+    function chat(show) { main.classList.toggle("nochat", !show); put("drew_desk_nochat", show ? "0" : "1"); }
     function move(x, y) {
-      var r = main.getBoundingClientRect();
-      if (stacked()) { var f = Math.max(0.2, Math.min(0.8, (y - r.top) / r.height)); main.style.setProperty("--splitv", (f * 100) + "%"); try { localStorage.setItem("drew_desk_splitv", f); } catch (e) {} }
-      else { var g = Math.max(0.2, Math.min(0.8, (x - r.left) / r.width)); main.style.setProperty("--split", (g * 100) + "%"); try { localStorage.setItem("drew_desk_split", g); } catch (e) {} }
+      var r = main.getBoundingClientRect(), st = stacked();
+      var f = st ? (y - r.top) / r.height : (x - r.left) / r.width;
+      if (f > 0.92) { chat(false); return; }
+      chat(true);
+      f = Math.max(0.2, Math.min(0.85, f));
+      main.style.setProperty(st ? "--splitv" : "--split", (f * 100) + "%"); put(st ? "drew_desk_splitv" : "drew_desk_split", f);
     }
-    try {
-      var a = parseFloat(localStorage.getItem("drew_desk_split")); if (a > 0 && a < 1) main.style.setProperty("--split", (a * 100) + "%");
-      var b = parseFloat(localStorage.getItem("drew_desk_splitv")); if (b > 0 && b < 1) main.style.setProperty("--splitv", (b * 100) + "%");
-    } catch (e) {}
+    var a = parseFloat(get("drew_desk_split")); if (a > 0 && a < 1) main.style.setProperty("--split", (a * 100) + "%");
+    var b = parseFloat(get("drew_desk_splitv")); if (b > 0 && b < 1) main.style.setProperty("--splitv", (b * 100) + "%");
+    if (get("drew_desk_nochat") === "1") main.classList.add("nochat");
     sp.addEventListener("pointerdown", function (e) { dragging = true; try { sp.setPointerCapture(e.pointerId); } catch (err) {} sp.classList.add("drag"); document.body.classList.add("dragging"); e.preventDefault(); });
     sp.addEventListener("pointermove", function (e) { if (dragging) move(e.clientX, e.clientY); });
     function end() { dragging = false; sp.classList.remove("drag"); document.body.classList.remove("dragging"); }
     sp.addEventListener("pointerup", end); sp.addEventListener("pointercancel", end);
+    sp.addEventListener("dblclick", function () { chat(main.classList.contains("nochat")); });
+
+    var hs = $("hsplit"), tray = $("tray"), pane = $("work-pane"), vdrag = false;
+    function shut(on) { tray.classList.toggle("shut", on); hs.classList.toggle("shut", on); put("drew_desk_trayshut", on ? "1" : "0"); }
+    function size(h) { tray.style.height = h + "px"; tray.classList.add("sized"); put("drew_desk_tray", h); }
+    function vmove(y) {
+      var r = pane.getBoundingClientRect(), h = r.bottom - y - 6;
+      if (h < 34) { shut(true); return; }
+      shut(false); size(Math.round(Math.min(h, r.height * 0.7)));
+    }
+    var th = parseFloat(get("drew_desk_tray")); if (th >= 34) size(th);
+    if (get("drew_desk_trayshut") === "1") shut(true);
+    hs.addEventListener("pointerdown", function (e) { vdrag = true; try { hs.setPointerCapture(e.pointerId); } catch (err) {} hs.classList.add("drag"); document.body.classList.add("dragging-v"); e.preventDefault(); });
+    hs.addEventListener("pointermove", function (e) { if (vdrag) vmove(e.clientY); });
+    function vend() { vdrag = false; hs.classList.remove("drag"); document.body.classList.remove("dragging-v"); }
+    hs.addEventListener("pointerup", vend); hs.addEventListener("pointercancel", vend);
+    hs.addEventListener("dblclick", function () { shut(!tray.classList.contains("shut")); });
   })();
 
   if (token) { hideLogin(); start(); } else { showLogin(); }
