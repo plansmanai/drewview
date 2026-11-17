@@ -1,0 +1,531 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="DrewView">
+<title>DrewView — Plansman</title>
+<link rel="icon" type="image/png" href="logo.png">
+<link rel="apple-touch-icon" href="logo.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Lato:wght@400;700;900&display=swap" rel="stylesheet">
+<style>
+/* DrewView (Lance 2026-11-17 named it; internal name in code = "desk"): LEFT = what Drew is drawing — his newest picture, the earlier ones, what he is
+   doing; RIGHT = the conversation (same thread as Telegram). Tap a picture to mark it up with a finger and tell him
+   what to change. Same PIN gate and same look as the Jake / Cora cockpits. The page holds only the public anon key. */
+* { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --accent: #199ad0; --accent-dark: #1688b7; --ink: #1a1a2e; --muted: #7a8089; --line: #e3e6ea;
+  --bg: #f3f5f7; --card: #fff; --me: #199ad0; --him: #eef1f4; --warn: #e67e22; --bad: #c0392b; --red: #e60000;
+  --split: 56%;
+}
+html, body { height: 100%; }
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+body { border-top: 3px solid var(--accent); font-family: 'Lato', "Helvetica Neue", Arial, sans-serif; color: var(--ink);
+  background: var(--bg); display: flex; flex-direction: column; overflow: hidden; overscroll-behavior: none; }
+
+#main { flex: 1 1 auto; display: grid; grid-template-columns: minmax(0, var(--split)) 10px minmax(0, 1fr); gap: 0;
+  padding: 12px; min-height: 0; padding-bottom: max(12px, env(safe-area-inset-bottom)); }
+.pane { background: var(--card); border: 1px solid var(--line); border-radius: 10px; display: flex; flex-direction: column;
+  min-height: 0; overflow: hidden; }
+.pane-hdr { flex: 0 0 auto; display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-bottom: 1px solid var(--line);
+  font-size: 13px; color: var(--muted); min-height: 44px; }
+.brand { font-family: 'Bebas Neue', sans-serif; font-size: 21px; letter-spacing: 1px; color: var(--ink); white-space: nowrap; line-height: 1; }
+.brand span { color: var(--accent); margin: 0 5px; }
+.signout { font-size: 11.5px; color: var(--muted); cursor: pointer; white-space: nowrap; }
+.pane-hdr b { color: var(--ink); font-weight: 900; text-transform: uppercase; letter-spacing: .5px; font-size: 12px; }
+.pane-hdr .grow { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pane-hdr .hot { color: var(--accent); font-weight: 700; }
+.pane-hdr .warnc { color: var(--warn); font-weight: 700; }
+#splitter { cursor: col-resize; position: relative; touch-action: none; }
+#splitter::after { content: ""; position: absolute; top: 0; bottom: 0; left: 4px; width: 2px; background: var(--line); border-radius: 2px; }
+#splitter.drag::after { background: var(--accent); }
+body.dragging { cursor: col-resize; user-select: none; }
+
+/* Left: Drew's work */
+#now { flex: 1 1 auto; min-height: 0; display: flex; align-items: center; justify-content: center; background: #fafbfc;
+  position: relative; overflow: hidden; cursor: pointer; }
+#now img { max-width: 100%; max-height: 100%; object-fit: contain; display: block; }
+#now-empty { color: var(--muted); padding: 24px 16px; text-align: center; line-height: 1.6; font-size: 13.5px; }
+#now-cap { flex: 0 0 auto; padding: 7px 12px; font-size: 12.5px; color: var(--ink); border-top: 1px solid var(--line);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#now-cap span { color: var(--muted); margin-right: 6px; font-variant-numeric: tabular-nums; }
+#strip { flex: 0 0 auto; display: flex; gap: 6px; overflow-x: auto; padding: 8px 10px; border-top: 1px solid var(--line);
+  background: #fff; -webkit-overflow-scrolling: touch; }
+#strip:empty { display: none; }
+.th { flex: 0 0 auto; width: 76px; height: 58px; border: 2px solid var(--line); border-radius: 6px; overflow: hidden;
+  background: #f1f3f5; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 10px; color: var(--muted); }
+.th img { width: 100%; height: 100%; object-fit: cover; }
+.th.sel { border-color: var(--accent); }
+.th.mine { border-color: var(--red); }
+#doing { flex: 0 0 auto; max-height: 22%; overflow-y: auto; border-top: 1px solid var(--line); padding: 6px 10px; font-size: 12px; }
+#doing:empty { display: none; }
+.act { display: grid; grid-template-columns: 50px minmax(0, 1fr); gap: 8px; padding: 2px 0; color: #444; }
+.act .t { color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+.act .x { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-family: Consolas, Menlo, monospace; font-size: 11.5px; }
+.act.turn .x, .act.gate .x { font-family: inherit; font-weight: 700; color: var(--accent); }
+
+/* Right: the thread */
+#chat-pane { position: relative; }
+#msgs { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 14px 14px 6px; background: #fafbfc; -webkit-overflow-scrolling: touch; }
+.day { text-align: center; font-size: 11px; font-weight: 700; color: var(--muted); letter-spacing: .5px; text-transform: uppercase; margin: 10px 0 8px; }
+.m { display: flex; flex-direction: column; margin: 0 0 8px; max-width: 88%; }
+.m.user { align-self: flex-end; align-items: flex-end; margin-left: auto; }
+.m.assistant { align-self: flex-start; align-items: flex-start; }
+.bubble { padding: 9px 12px; border-radius: 14px; font-size: 14.5px; line-height: 1.42; white-space: pre-wrap; word-wrap: break-word; overflow-wrap: anywhere; }
+.m.user .bubble { background: var(--me); color: #fff; border-bottom-right-radius: 4px; }
+.m.assistant .bubble { background: var(--him); color: var(--ink); border-bottom-left-radius: 4px; }
+.m.pending .bubble { opacity: .55; }
+.m .meta { font-size: 11px; color: var(--muted); margin: 3px 4px 0; }
+.m.ask .bubble { box-shadow: 0 0 0 2px var(--warn) inset; }
+#composer { flex: 0 0 auto; border-top: 1px solid var(--line); padding: 10px 12px 12px; background: #fff; }
+#row { display: flex; gap: 8px; align-items: flex-end; }
+#text, #mk-text { flex: 1; resize: none; min-height: 42px; max-height: 140px; padding: 10px 12px; font-family: inherit; font-size: 16px;
+  border: 2px solid #dfe3e8; border-radius: 10px; outline: none; background: #fff; min-width: 0; }
+#text:focus, #mk-text:focus { border-color: var(--accent); }
+.go { font-family: inherit; font-size: 15px; font-weight: 700; padding: 0 16px; height: 42px; border-radius: 10px; border: none;
+  background: var(--accent); color: #fff; cursor: pointer; }
+.go:disabled { background: #a9b2bb; }
+#hint { display: none; font-size: 11.5px; margin-top: 6px; color: var(--warn); font-weight: 700; }
+#hint.warn { display: block; }
+
+/* Markup: one picture, full screen. One finger draws, two fingers zoom and move. */
+#mk { position: fixed; inset: 0; background: #1b1b1f; z-index: 40; display: none; flex-direction: column; }
+#mk.show { display: flex; }
+#mk-stage { flex: 1 1 auto; min-height: 0; position: relative; overflow: hidden; touch-action: none; }
+#mk-wrap { position: absolute; left: 0; top: 0; transform-origin: 0 0; will-change: transform; }
+#mk-wrap img { display: block; user-select: none; -webkit-user-drag: none; pointer-events: none; }
+#mk-wrap canvas { position: absolute; left: 0; top: 0; width: 100%; height: 100%; pointer-events: none; }
+#mk-top { position: absolute; top: max(8px, env(safe-area-inset-top)); left: 8px; right: 8px; display: flex; gap: 8px; z-index: 2; pointer-events: none; }
+#mk-top div { pointer-events: auto; background: rgba(0,0,0,.6); color: #fff; font-size: 14px; font-weight: 700; padding: 9px 13px; border-radius: 999px; cursor: pointer; }
+#mk-top .sp { flex: 1; background: none; pointer-events: none; }
+#mk-top #mk-info { font-weight: 400; font-size: 12px; max-width: 55%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: default; }
+#mk-bar { flex: 0 0 auto; display: flex; gap: 8px; align-items: flex-end; padding: 10px 10px max(10px, env(safe-area-inset-bottom)); background: #fff; }
+
+#login { position: fixed; inset: 0; background: #222121; display: flex; align-items: center; justify-content: center; z-index: 50; }
+#login form { width: min(380px, 92vw); background: #fff; border-radius: 12px; padding: 26px 24px 22px; text-align: center; }
+#login h1 { font-family: 'Bebas Neue', sans-serif; font-weight: normal; font-size: 34px; letter-spacing: 1px; color: #3b3b3b; }
+#login h1 span { color: var(--accent); }
+#login p { color: #888; font-size: 14px; margin: 4px 0 18px; }
+#login input { width: 100%; padding: 14px 16px; font-size: 22px; letter-spacing: 6px; text-align: center; border: 2px solid #ddd;
+  border-radius: 8px; outline: none; font-family: inherit; margin-bottom: 14px; }
+#login button { width: 100%; padding: 14px; font-size: 17px; font-weight: 600; background: var(--accent); color: #fff; border: none;
+  border-radius: 8px; cursor: pointer; font-family: inherit; }
+#login .err { color: var(--bad); font-size: 14px; margin-top: 12px; display: none; }
+#login .err.show { display: block; }
+
+@media (max-width: 900px) {
+  .pane-hdr b { display: none; }
+  .brand { font-size: 18px; }
+  #main { padding: 5px; }
+  .m { max-width: 96%; }
+  .bubble { font-size: 13.5px; padding: 7px 10px; }
+  .pane-hdr { padding: 7px 9px; min-height: 38px; font-size: 12px; }
+  #msgs { padding: 8px 7px 4px; }
+  #composer { padding: 6px; }
+  .go { padding: 0 11px; }
+}
+/* a phone held upright: the picture on top, the conversation under it (side by side is too narrow to read a plan) */
+@media (max-width: 620px) and (orientation: portrait) {
+  #main { grid-template-columns: 1fr; grid-template-rows: minmax(0, var(--splitv, 46%)) 10px minmax(0, 1fr); }
+  #splitter { cursor: row-resize; }
+  #splitter::after { top: 4px; bottom: auto; left: 0; right: 0; width: auto; height: 2px; }
+  #doing { display: none; }
+}
+</style>
+</head>
+<body>
+
+<div id="login">
+  <form id="login-form" autocomplete="off">
+    <h1>DREW<span>·</span>VIEW</h1>
+    <p>Watch Drew work. Enter your PIN.</p>
+    <input id="pin" type="password" inputmode="numeric" autocomplete="one-time-code" placeholder="••••••" autofocus>
+    <button id="pin-btn" type="submit">Open</button>
+    <div class="err" id="login-err">That PIN is not recognized.</div>
+  </form>
+</div>
+
+<main id="main">
+  <section class="pane" id="work-pane">
+    <div class="pane-hdr"><span class="brand">DREW<span>·</span>VIEW</span><span class="grow" id="st-now">—</span></div>
+    <div id="now"><div id="now-empty">Nothing to view yet.<br>When Drew draws or shows you something, it lands here. Tap it to mark it up.</div></div>
+    <div id="now-cap" style="display:none"></div>
+    <div id="strip"></div>
+    <div id="doing"></div>
+  </section>
+
+  <div id="splitter"></div>
+
+  <section class="pane" id="chat-pane">
+    <div class="pane-hdr"><b>Conversation</b><span class="grow" id="chat-sub">the same thread as Telegram</span><span class="signout" id="logout">sign out</span></div>
+    <div id="msgs"></div>
+    <div id="composer">
+      <div id="row">
+        <textarea id="text" rows="1" placeholder="Tell Drew…"></textarea>
+        <button class="go" id="send">Send</button>
+      </div>
+      <div id="hint"></div>
+    </div>
+  </section>
+</main>
+
+<div id="mk">
+  <div id="mk-stage">
+    <div id="mk-wrap"><img id="mk-img" alt=""><canvas id="mk-cv"></canvas></div>
+    <div id="mk-top"><div id="mk-close">✕</div><div id="mk-info"></div><div class="sp"></div><div id="mk-undo">Undo</div></div>
+  </div>
+  <div id="mk-bar">
+    <textarea id="mk-text" rows="1" placeholder="Draw on it, then say what to change…"></textarea>
+    <button class="go" id="mk-send">Send</button>
+  </div>
+</div>
+
+<script>
+(function () {
+  var SB_URL = "https://kwcoqoizrwqxpfrkwkfv.supabase.co/rest/v1";
+  var SB_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt3Y29xb2l6cndxeHBmcmt3a2Z2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ1NzQxMjAsImV4cCI6MjA5MDE1MDEyMH0.UY0OW4BnbG0SRhxrgDGibqyKHsXrN9j-JJzx2KSMQzk";
+  var POLL_MS = 2000, POLL_HIDDEN_MS = 8000, ONLINE_SECS = 150;
+  var TOKEN_KEY = "cora_portal_token";   // shared with the Jake / Cora cockpits: one PIN, one session
+
+  var $ = function (id) { return document.getElementById(id); };
+  var token = null, afterId = 0, afterFrame = 0, afterAct = 0, timer = null, inflight = false, failStreak = 0;
+  var lastDay = "", pendingLocal = [], atBottom = true;
+  var frames = [], frameData = {}, frameWait = {}, shownId = null, pinned = false;
+
+  try { token = localStorage.getItem(TOKEN_KEY); } catch (e) {}
+
+  function rpc(name, body) {
+    return fetch(SB_URL + "/rpc/" + name, {
+      method: "POST",
+      headers: { "apikey": SB_ANON, "Authorization": "Bearer " + SB_ANON, "Content-Type": "application/json" },
+      body: JSON.stringify(body || {})
+    }).then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); });
+  }
+
+  // ── Sign in (shared gate) ──
+  function showLogin(msg) {
+    $("login").style.display = "flex";
+    if (msg) { $("login-err").textContent = msg; $("login-err").classList.add("show"); }
+  }
+  function hideLogin() { $("login").style.display = "none"; }
+  $("login-form").addEventListener("submit", function (e) {
+    e.preventDefault();
+    var pin = $("pin").value.trim(); if (!pin) return;
+    var b = $("pin-btn"); b.disabled = true; b.textContent = "Checking…";
+    $("login-err").classList.remove("show");
+    rpc("cora_portal_login", { p_pin: pin }).then(function (d) {
+      b.disabled = false; b.textContent = "Open"; $("pin").value = "";
+      if (!d || !d.ok) { $("login-err").textContent = "That PIN is not recognized."; $("login-err").classList.add("show"); return; }
+      token = d.token; try { localStorage.setItem(TOKEN_KEY, token); } catch (err) {}
+      hideLogin(); start();
+    }).catch(function (err) {
+      b.disabled = false; b.textContent = "Open";
+      $("login-err").textContent = "Could not reach the relay (" + err.message + ")."; $("login-err").classList.add("show");
+    });
+  });
+  $("logout").addEventListener("click", function () {
+    var t = token; token = null; stop();
+    try { localStorage.removeItem(TOKEN_KEY); } catch (e) {}
+    if (t) rpc("cora_portal_logout", { p_token: t }).catch(function () {});
+    location.reload();
+  });
+
+  // ── Polling ──
+  function start() { stop(); tick(); schedule(); }
+  function stop() { if (timer) { clearTimeout(timer); timer = null; } }
+  function schedule() { stop(); timer = setTimeout(function () { tick(); schedule(); }, document.hidden ? POLL_HIDDEN_MS : POLL_MS); }
+  document.addEventListener("visibilitychange", function () { if (token) { if (!document.hidden) tick(); schedule(); } });
+
+  function tick() {
+    if (!token || inflight) return;
+    inflight = true;
+    rpc("drew_desk_read", { p_token: token, p_after_id: afterId, p_after_frame: afterFrame, p_after_act: afterAct, p_limit: 150 })
+      .then(function (d) {
+        inflight = false; failStreak = 0;
+        if (!d || !d.ok) { token = null; try { localStorage.removeItem(TOKEN_KEY); } catch (e) {} stop(); showLogin("Signed out — enter the PIN again."); return; }
+        applyMessages(d.messages || []);
+        applyFrames(d.frames || []);
+        applyActivity(d.activity || []);
+        applyLive(d.live, d.now);
+      })
+      .catch(function (err) {
+        inflight = false; failStreak++;
+        if (failStreak >= 3) { $("chat-sub").textContent = "relay unreachable — retrying"; }
+      });
+  }
+
+  // ── Pictures ──
+  function hhmm(d) { return d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" }); }
+  function isMine(f) { return /^Lance/.test(f.caption || ""); }
+
+  function loadFrame(id) {
+    if (frameData[id]) return Promise.resolve(frameData[id]);
+    if (frameWait[id]) return frameWait[id];
+    frameWait[id] = rpc("drew_desk_frame", { p_token: token, p_id: id }).then(function (d) {
+      delete frameWait[id];
+      if (!d || !d.ok) throw new Error("gone");
+      frameData[id] = "data:image/jpeg;base64," + d.data;
+      return frameData[id];
+    }, function (e) { delete frameWait[id]; throw e; });
+    return frameWait[id];
+  }
+
+  function applyFrames(list) {
+    if (!list.length) return;
+    var fresh = false;
+    list.forEach(function (f) {
+      if (f.id <= afterFrame) return;
+      afterFrame = f.id; frames.push(f); fresh = true; addThumb(f);
+    });
+    while (frames.length > 60) { var old = frames.shift(); delete frameData[old.id]; var t = $("th-" + old.id); if (t) t.remove(); }
+    if (fresh) {
+      // Drew's newest picture takes the desk unless Lance is looking at an older one on purpose
+      var newest = null;
+      for (var i = frames.length - 1; i >= 0; i--) { if (!isMine(frames[i])) { newest = frames[i]; break; } }
+      if (!newest) newest = frames[frames.length - 1];
+      if (!pinned || shownId === null) show(newest.id, false);
+      var s = $("strip"); s.scrollLeft = s.scrollWidth;
+    }
+  }
+  function addThumb(f) {
+    var el = document.createElement("div"); el.className = "th" + (isMine(f) ? " mine" : ""); el.id = "th-" + f.id; el.textContent = "…";
+    el.title = f.caption || "";
+    el.addEventListener("click", function () { var last = frames[frames.length - 1]; show(f.id, f.id !== last.id); });
+    $("strip").appendChild(el);
+    loadFrame(f.id).then(function (src) { el.textContent = ""; var im = document.createElement("img"); im.src = src; el.appendChild(im); }).catch(function () { el.textContent = "gone"; });
+  }
+  function frameById(id) { for (var i = 0; i < frames.length; i++) if (frames[i].id === id) return frames[i]; return null; }
+  function show(id, pin) {
+    var f = frameById(id); if (!f) return;
+    shownId = id; pinned = !!pin;
+    var kids = $("strip").children; for (var i = 0; i < kids.length; i++) kids[i].classList.toggle("sel", kids[i].id === "th-" + id);
+    var cap = $("now-cap"); cap.style.display = "block"; cap.innerHTML = "";
+    var sp = document.createElement("span"); sp.textContent = hhmm(new Date(f.ts)); cap.appendChild(sp);
+    cap.appendChild(document.createTextNode(f.caption || "(no caption)"));
+    loadFrame(id).then(function (src) {
+      if (shownId !== id) return;
+      var box = $("now"); box.innerHTML = ""; var im = document.createElement("img"); im.src = src; im.alt = f.caption || ""; box.appendChild(im);
+    }).catch(function () {});
+  }
+  $("now").addEventListener("click", function () { if (shownId !== null) openMarkup(shownId); });
+
+  // ── Markup ──
+  var mk = { id: null, strokes: [], cur: null, s: 1, x: 0, y: 0, w: 0, h: 0, ptrs: {}, pinch: null };
+  function openMarkup(id) {
+    var f = frameById(id); if (!f) return;
+    loadFrame(id).then(function (src) {
+      mk.id = id; mk.strokes = []; mk.cur = null; mk.ptrs = {}; mk.pinch = null;
+      var im = $("mk-img");
+      im.onload = function () {
+        mk.w = im.naturalWidth; mk.h = im.naturalHeight;
+        var cv = $("mk-cv"); cv.width = mk.w; cv.height = mk.h;
+        $("mk-wrap").style.width = mk.w + "px"; $("mk-wrap").style.height = mk.h + "px";
+        fit(); redraw();
+      };
+      im.src = src;
+      $("mk-info").textContent = f.caption || "";
+      $("mk-text").value = ""; $("mk").classList.add("show");
+    });
+  }
+  function closeMarkup() { $("mk").classList.remove("show"); mk.id = null; $("mk-text").blur(); }
+  function fit() {
+    var st = $("mk-stage"), W = st.clientWidth, H = st.clientHeight;
+    mk.s = Math.min(W / mk.w, H / mk.h); mk.x = (W - mk.w * mk.s) / 2; mk.y = (H - mk.h * mk.s) / 2; place();
+  }
+  function place() { $("mk-wrap").style.transform = "translate(" + mk.x + "px," + mk.y + "px) scale(" + mk.s + ")"; }
+  function redraw() {
+    var cv = $("mk-cv"), c = cv.getContext("2d"); c.clearRect(0, 0, cv.width, cv.height);
+    c.strokeStyle = "#e60000"; c.fillStyle = "#e60000"; c.lineCap = "round"; c.lineJoin = "round";
+    c.lineWidth = Math.max(3, Math.max(mk.w, mk.h) / 300);
+    mk.strokes.concat(mk.cur ? [mk.cur] : []).forEach(function (s) {
+      if (!s.length) return;
+      if (s.length === 1) { c.beginPath(); c.arc(s[0][0] * mk.w, s[0][1] * mk.h, c.lineWidth * 1.5, 0, 6.3); c.fill(); return; }
+      c.beginPath(); c.moveTo(s[0][0] * mk.w, s[0][1] * mk.h);
+      for (var i = 1; i < s.length; i++) c.lineTo(s[i][0] * mk.w, s[i][1] * mk.h);
+      c.stroke();
+    });
+  }
+  function toImg(e) {
+    var r = $("mk-stage").getBoundingClientRect();
+    return [(e.clientX - r.left - mk.x) / mk.s / mk.w, (e.clientY - r.top - mk.y) / mk.s / mk.h];
+  }
+  function ptrList() { return Object.keys(mk.ptrs).map(function (k) { return mk.ptrs[k]; }); }
+  var stage = $("mk-stage");
+  stage.addEventListener("pointerdown", function (e) {
+    if (e.target.closest && e.target.closest("#mk-top")) return;
+    try { stage.setPointerCapture(e.pointerId); } catch (err) {}
+    mk.ptrs[e.pointerId] = { x: e.clientX, y: e.clientY };
+    var n = ptrList().length;
+    if (n === 1 && !(e.pointerType === "mouse" && (e.button !== 0 || e.shiftKey))) { var p = toImg(e); mk.cur = [[r3(p[0]), r3(p[1])]]; redraw(); }
+    else if (n === 1) { mk.pan = { x: e.clientX, y: e.clientY }; }
+    else if (n === 2) { mk.cur = null; startPinch(); redraw(); }
+  });
+  stage.addEventListener("pointermove", function (e) {
+    if (!mk.ptrs[e.pointerId]) return;
+    mk.ptrs[e.pointerId] = { x: e.clientX, y: e.clientY };
+    var n = ptrList().length;
+    if (n === 2 && mk.pinch) { doPinch(); return; }
+    if (mk.pan) { mk.x += e.clientX - mk.pan.x; mk.y += e.clientY - mk.pan.y; mk.pan = { x: e.clientX, y: e.clientY }; place(); return; }
+    if (n === 1 && mk.cur) {
+      var p = toImg(e), last = mk.cur[mk.cur.length - 1];
+      if (Math.abs(p[0] - last[0]) * mk.w * mk.s + Math.abs(p[1] - last[1]) * mk.h * mk.s > 3) { mk.cur.push([r3(p[0]), r3(p[1])]); redraw(); }
+    }
+  });
+  function up(e) {
+    if (!mk.ptrs[e.pointerId]) return;
+    delete mk.ptrs[e.pointerId]; mk.pan = null;
+    if (mk.pinch) { if (ptrList().length < 2) mk.pinch = null; return; }
+    if (mk.cur) { mk.strokes.push(mk.cur); mk.cur = null; redraw(); }
+  }
+  stage.addEventListener("pointerup", up); stage.addEventListener("pointercancel", up);
+  function r3(v) { return Math.round(Math.max(0, Math.min(1, v)) * 10000) / 10000; }
+  function startPinch() {
+    var p = ptrList(), r = stage.getBoundingClientRect();
+    var cx = (p[0].x + p[1].x) / 2 - r.left, cy = (p[0].y + p[1].y) / 2 - r.top;
+    mk.pinch = { d: Math.hypot(p[0].x - p[1].x, p[0].y - p[1].y) || 1, s: mk.s, ix: (cx - mk.x) / mk.s, iy: (cy - mk.y) / mk.s };
+  }
+  function doPinch() {
+    var p = ptrList(), r = stage.getBoundingClientRect();
+    var cx = (p[0].x + p[1].x) / 2 - r.left, cy = (p[0].y + p[1].y) / 2 - r.top;
+    var d = Math.hypot(p[0].x - p[1].x, p[0].y - p[1].y) || 1;
+    mk.s = Math.max(0.05, Math.min(12, mk.pinch.s * d / mk.pinch.d));
+    mk.x = cx - mk.pinch.ix * mk.s; mk.y = cy - mk.pinch.iy * mk.s; place();
+  }
+  stage.addEventListener("wheel", function (e) {
+    e.preventDefault();
+    var r = stage.getBoundingClientRect(), cx = e.clientX - r.left, cy = e.clientY - r.top;
+    var ix = (cx - mk.x) / mk.s, iy = (cy - mk.y) / mk.s;
+    mk.s = Math.max(0.05, Math.min(12, mk.s * (e.deltaY < 0 ? 1.15 : 1 / 1.15)));
+    mk.x = cx - ix * mk.s; mk.y = cy - iy * mk.s; place();
+  }, { passive: false });
+  $("mk-close").addEventListener("click", closeMarkup);
+  $("mk-undo").addEventListener("click", function () { mk.strokes.pop(); redraw(); });
+  $("mk-send").addEventListener("click", function () {
+    var text = $("mk-text").value.trim();
+    if (!mk.strokes.length && !text) { $("mk-text").focus(); return; }
+    var b = $("mk-send"); b.disabled = true;
+    rpc("drew_desk_send", { p_token: token, p_text: text, p_kind: "markup", p_frame_id: mk.id, p_strokes: mk.strokes.length ? mk.strokes : null })
+      .then(function (d) {
+        b.disabled = false;
+        if (!d || !d.ok) { alert("Not sent (" + ((d && d.error) || "signed out") + ")."); return; }
+        addPending("✎ " + (text || "markup"), true); closeMarkup();
+      }).catch(function (err) { b.disabled = false; alert("Not sent: " + err.message); });
+  });
+  window.addEventListener("resize", function () { if (mk.id !== null) fit(); });
+
+  // ── Messages ──
+  function dayLabel(d) {
+    var today = new Date(); var y = new Date(); y.setDate(today.getDate() - 1);
+    if (d.toDateString() === today.toDateString()) return "Today";
+    if (d.toDateString() === y.toDateString()) return "Yesterday";
+    return d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
+  }
+  function isAsk(text) { return /\?\s*$/.test((text || "").trim()); }
+  function applyMessages(list) {
+    if (!list.length) return;
+    var box = $("msgs"), wasAtBottom = atBottom;
+    list.forEach(function (m) {
+      if (m.id <= afterId) return;
+      afterId = m.id;
+      var d = new Date(m.ts), label = dayLabel(d);
+      if (label !== lastDay) { lastDay = label; var dl = document.createElement("div"); dl.className = "day"; dl.textContent = label; box.appendChild(dl); }
+      var el = document.createElement("div");
+      el.className = "m " + (m.role === "user" ? "user" : "assistant");
+      if (m.role !== "user" && isAsk(m.content)) el.className += " ask";
+      var b = document.createElement("div"); b.className = "bubble"; b.textContent = m.content; el.appendChild(b);
+      var meta = document.createElement("div"); meta.className = "meta";
+      meta.textContent = (m.role === "user" ? "Lance" : "Drew") + " · " + hhmm(d);
+      el.appendChild(meta); box.appendChild(el);
+      if (m.role === "user") reconcilePending(m.content);
+    });
+    if (wasAtBottom || list.length > 50) scrollBottom();
+  }
+  function scrollBottom() { var box = $("msgs"); box.scrollTop = box.scrollHeight; atBottom = true; }
+  $("msgs").addEventListener("scroll", function () { var box = $("msgs"); atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 60; });
+  function addPending(text, loose) {
+    var box = $("msgs");
+    var el = document.createElement("div"); el.className = "m user pending";
+    var b = document.createElement("div"); b.className = "bubble"; b.textContent = text; el.appendChild(b);
+    var meta = document.createElement("div"); meta.className = "meta"; meta.textContent = "Lance · sending…"; el.appendChild(meta);
+    box.appendChild(el); pendingLocal.push({ text: text, el: el, at: Date.now(), loose: !!loose }); scrollBottom();
+  }
+  function reconcilePending(text) {
+    for (var i = 0; i < pendingLocal.length; i++) {
+      var p = pendingLocal[i];
+      if (p.text.trim() === (text || "").trim() || (p.loose && /^\[DrewView markup]/.test(text || ""))) { p.el.remove(); pendingLocal.splice(i, 1); return; }
+    }
+  }
+  setInterval(function () {
+    pendingLocal.forEach(function (p) { if (Date.now() - p.at > 40000) p.el.querySelector(".meta").textContent = "Lance · not picked up yet — is Drew running?"; });
+  }, 5000);
+
+  function send(text) {
+    text = (text || "").trim(); if (!text || !token) return;
+    $("send").disabled = true;
+    rpc("drew_desk_send", { p_token: token, p_text: text, p_kind: "message" }).then(function (d) {
+      $("send").disabled = false;
+      if (!d || !d.ok) { $("hint").textContent = "Not sent (" + ((d && d.error) || "signed out") + ")."; $("hint").classList.add("warn"); return; }
+      $("hint").classList.remove("warn"); $("text").value = ""; autosize($("text")); addPending(text);
+    }).catch(function (err) { $("send").disabled = false; $("hint").textContent = "Not sent: " + err.message; $("hint").classList.add("warn"); });
+  }
+  $("send").addEventListener("click", function () { send($("text").value); });
+  $("text").addEventListener("keydown", function (e) { if (e.key === "Enter" && !e.shiftKey && !("ontouchstart" in window)) { e.preventDefault(); send($("text").value); } });
+  function autosize(t) { t.style.height = "auto"; t.style.height = Math.min(140, t.scrollHeight) + "px"; }
+  $("text").addEventListener("input", function () { autosize($("text")); });
+  $("mk-text").addEventListener("input", function () { autosize($("mk-text")); });
+
+  // ── Activity + presence ──
+  function applyActivity(list) {
+    if (!list.length) return;
+    var box = $("doing");
+    list.forEach(function (a) {
+      if (a.id <= afterAct) return;
+      afterAct = a.id;
+      var el = document.createElement("div"); el.className = "act " + (a.kind || "note");
+      var t = document.createElement("span"); t.className = "t"; t.textContent = hhmm(new Date(a.ts));
+      var x = document.createElement("span"); x.className = "x"; x.textContent = a.text || "";
+      el.appendChild(t); el.appendChild(x); box.appendChild(el);
+    });
+    while (box.children.length > 80) box.removeChild(box.firstChild);
+    box.scrollTop = box.scrollHeight;
+  }
+  function applyLive(live, now) {
+    var el = $("st-now");
+    var serverNow = now ? new Date(now).getTime() : Date.now();
+    var hb = live && live.heartbeat_at ? new Date(live.heartbeat_at).getTime() : null;
+    var online = hb && (serverNow - hb) / 1000 < ONLINE_SECS;
+    if (!online) { el.textContent = "offline"; el.className = "grow warnc"; $("chat-sub").textContent = "Drew is offline"; }
+    else if (live.busy) { el.textContent = "working" + (live.note ? ": " + live.note : ""); el.className = "grow hot"; $("chat-sub").textContent = "Drew is working…"; }
+    else { el.textContent = "idle"; el.className = "grow"; $("chat-sub").textContent = "the same thread as Telegram"; }
+    document.title = (online && live.busy ? "● " : "") + "DrewView — Plansman";
+  }
+
+  // ── Draggable split (side by side, or stacked on an upright phone) ──
+  (function () {
+    var main = $("main"), sp = $("splitter"), dragging = false;
+    function stacked() { return getComputedStyle(main).gridTemplateColumns.split(" ").length === 1; }
+    function move(x, y) {
+      var r = main.getBoundingClientRect();
+      if (stacked()) { var f = Math.max(0.2, Math.min(0.8, (y - r.top) / r.height)); main.style.setProperty("--splitv", (f * 100) + "%"); try { localStorage.setItem("drew_desk_splitv", f); } catch (e) {} }
+      else { var g = Math.max(0.2, Math.min(0.8, (x - r.left) / r.width)); main.style.setProperty("--split", (g * 100) + "%"); try { localStorage.setItem("drew_desk_split", g); } catch (e) {} }
+    }
+    try {
+      var a = parseFloat(localStorage.getItem("drew_desk_split")); if (a > 0 && a < 1) main.style.setProperty("--split", (a * 100) + "%");
+      var b = parseFloat(localStorage.getItem("drew_desk_splitv")); if (b > 0 && b < 1) main.style.setProperty("--splitv", (b * 100) + "%");
+    } catch (e) {}
+    sp.addEventListener("pointerdown", function (e) { dragging = true; try { sp.setPointerCapture(e.pointerId); } catch (err) {} sp.classList.add("drag"); document.body.classList.add("dragging"); e.preventDefault(); });
+    sp.addEventListener("pointermove", function (e) { if (dragging) move(e.clientX, e.clientY); });
+    function end() { dragging = false; sp.classList.remove("drag"); document.body.classList.remove("dragging"); }
+    sp.addEventListener("pointerup", end); sp.addEventListener("pointercancel", end);
+  })();
+
+  if (token) { hideLogin(); start(); } else { showLogin(); }
+})();
+</script>
+</body>
+</html>
